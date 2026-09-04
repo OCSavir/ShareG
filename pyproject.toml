@@ -1,0 +1,56 @@
+[project]
+name = "shareg"
+version = "1.0.0"
+description = "ShareG - cross-platform local network file & text sharing"
+requires-python = ">=3.9"
+dependencies = ["flet>=0.86.0"]
+
+[tool.setuptools]
+packages = ["shareg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# ---- Flet build/packaging configuration -------------------------------------
+[tool.flet]
+# Product name shown in window titles, taskbar, and installed app listings.
+product = "ShareG"
+company = "ShareG"
+copyright = "© 2026 ShareG"
+# Icons are discovered by NAME in <app>/assets/ by `flet build`:
+#   icon.png          -> general icon (also Linux + Android adaptive source)
+#   icon_windows.ico  -> Windows executable/taskbar icon
+# Keep those filenames when regenerating via tools/make_icon.py + make_ico.py.
+
+[tool.flet.app]
+path = "main.py"
+module = "main"
+
+[tool.flet.android]
+# Adaptive-icon background matches the icon's teal so the squircle reads
+# cleanly on all launcher shapes.
+adaptive_icon_background = "#00C6B2"
+# Permissions required for UDP multicast discovery + TCP transfers + storage.
+permissions = [
+  "INTERNET",
+  "ACCESS_NETWORK_STATE",
+  "ACCESS_WIFI_STATE",
+  "CHANGE_WIFI_MULTICAST_STATE",
+  "READ_MEDIA_IMAGES",
+  "READ_MEDIA_VIDEO",
+  "READ_MEDIA_AUDIO",
+  "READ_EXTERNAL_STORAGE",
+  "WRITE_EXTERNAL_STORAGE"
+]
+# ShareG writes received files / pairing data under its own dirs.
+split_per_abi = true
+
+[tool.flet.android.feature]
+android_hardware_lte = true
+
+[tool.flet.android.signing]
+# Fill these in for release signing; debug builds work without them.
+# key_store = "path/to/keystore.jks"
+# key_store_password = "..."
+# key_alias = "shareg"
+# key_password = "..."
