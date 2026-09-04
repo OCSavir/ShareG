@@ -22,8 +22,6 @@ jobs:
             runner: ubuntu-latest
           - target: windows
             runner: windows-latest
-          - target: web
-            runner: ubuntu-latest
 
     steps:
       - name: Checkout repository
