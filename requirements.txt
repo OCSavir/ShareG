@@ -1,1 +1,2 @@
 # ShareG runtime dependencies
+flet>=0.86.0
