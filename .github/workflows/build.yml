@@ -1,0 +1,44 @@
+name: Build Flet App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: apk
+            runner: ubuntu-latest
+          - target: aab
+            runner: ubuntu-latest
+          - target: linux
+            runner: ubuntu-latest
+          - target: windows
+            runner: windows-latest
+          - target: web
+            runner: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build app
+        id: build
+        uses: flet-dev/flet-build-action@v1
+        with:
+          target: ${{ matrix.target }}
+          runner-python-version: "3.12"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-build
+          path: ${{ steps.build.outputs.archive-path }}
+          if-no-files-found: error
