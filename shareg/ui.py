@@ -332,7 +332,9 @@ class ShareGApp:
             title=ft.Text("Nearby devices", size=13, weight=ft.FontWeight.BOLD, color=_MUTED),
             expanded=True,
             controls_padding=ft.Padding(8, 0, 8, 8),
-            controls=[ft.Container(content=self.devices_list)],
+            # Fixed height so the (internally scrolling) list never eats the
+            # whole screen or squeezes the tabs area to zero.
+            controls=[ft.Container(height=200, content=self.devices_list)],
         )
         self._devices_card = ft.Container(
             content=self._devices_section,
@@ -455,18 +457,27 @@ class ShareGApp:
             controls=[ft.Container(height=180, content=self.log_list)],
         )
 
-        root = ft.Column(
-            [
-                device_bar,
-                self._devices_card,
-                self.tabs,
-                log_section,
-            ],
-            spacing=0,
+        # Wrap everything in SafeArea so content starts below the Android
+        # status bar (clock/battery/signal) regardless of device/notch size.
+        # NOTE: root must NOT be a scrollable Column with expand children —
+        # scrollable parents give children unbounded height and Flutter flex
+        # children (tabs, TextField) then collapse to zero. Fixed heights +
+        # one expand slot (tabs) keep every region visible.
+        safe_root = ft.SafeArea(
             expand=True,
-            scroll=ft.ScrollMode.AUTO,  # whole page scrolls if the keyboard/space is tight
+            content=ft.Column(
+                [
+                    header,
+                    device_bar,
+                    self._devices_card,
+                    self.tabs,
+                    log_section,
+                ],
+                spacing=0,
+                expand=True,
+            ),
         )
-        page.add(header, root)
+        page.add(safe_root)
 
     # ------------------------------------------------------------------ mobile helpers
 
@@ -705,6 +716,10 @@ class ShareGApp:
         self._log(f"Text from {sender}: {len(text)} chars")
         # Selectable text (Ctrl+C works natively) + a Copy button for touch
         # devices where keyboard shortcuts are impractical.
+        # NOTE: no expand=True here - inside an AlertDialog the content column
+        # is height-unbounded, and a flex child would collapse to zero height
+        # (the text became invisible on Android while Copy still worked).
+        # Fixed min/max lines + light-on-dark colors make the text visible.
         text_area = ft.TextField(
             value=text,
             multiline=True,
@@ -714,7 +729,8 @@ class ShareGApp:
             bgcolor=_BG,
             border_color="#2A3138",
             color=_TEXT,
-            expand=True,
+            text_style=ft.TextStyle(color=_TEXT),
+            hint_style=ft.TextStyle(color=_MUTED),
         )
         dlg = ft.AlertDialog(
             modal=True,
