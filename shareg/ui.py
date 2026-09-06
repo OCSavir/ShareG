@@ -111,6 +111,23 @@ class ShareGApp:
     # ------------------------------------------------------------------ build
 
     def _build_ui(self) -> None:
+        """Pick the layout for the runtime platform.
+
+        Desktop (Windows/Linux/macOS) uses the original three-pane layout,
+        unchanged. Android/iOS use a dedicated single-column phone layout.
+        Both builders populate the SAME widget attributes (devices_list,
+        log_list, text_field, tabs, ...), so all shared update logic below
+        (_refresh_devices, _log, progress, dialogs) works on every platform.
+        """
+        platform = getattr(self.page, "platform", None)
+        if platform is not None and platform.is_mobile():
+            self._is_mobile_layout = True
+            self._build_ui_mobile()
+        else:
+            self._is_mobile_layout = False
+            self._build_ui_desktop()
+
+    def _build_ui_desktop(self) -> None:
         page = self.page
 
         # header
@@ -255,6 +272,211 @@ class ShareGApp:
         root = ft.Row([devices_panel, center, log_panel], expand=True, spacing=0)
         page.add(header, root)
 
+    # ------------------------------------------------------------------ mobile (Android/iOS) layout
+
+    def _build_ui_mobile(self) -> None:
+        """Single-column phone layout for Android/iOS.
+
+        Designed for ~360-430 dp portrait widths: no fixed side panels, every
+        row wraps instead of overflowing horizontally, lists scroll, and
+        buttons stay thumb-sized (min touch target ~48 dp).
+        """
+        page = self.page
+
+        # compact header; long device names ellipsize instead of pushing
+        # the chip off screen
+        self._device_chip = ft.Text(
+            "", size=11, color=_MUTED, max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+            text_align=ft.TextAlign.RIGHT,
+        )
+        header = ft.Container(
+            content=ft.Row(
+                [
+                    ft.Icon(icon=ft.Icons.SHARE, color=_TEAL, size=22),
+                    ft.Text(c.APP_NAME, size=17, weight=ft.FontWeight.BOLD, color=_TEXT),
+                    self._device_chip,
+                ],
+                spacing=8,
+            ),
+            padding=ft.Padding(12, 10, 12, 10),
+            bgcolor=_CARD,
+        )
+
+        # selected-device indicator + tappable device selector row (opens the
+        # devices list) so pairing targets stay visible without a side panel
+        self._mobile_selected_label = ft.Text(
+            "No device selected", size=12, color=_MUTED,
+            max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, expand=True,
+        )
+        device_bar = ft.Container(
+            content=ft.Row(
+                [
+                    _dot(_MUTED),
+                    self._mobile_selected_label,
+                    ft.Icon(icon=ft.Icons.EXPAND_MORE, color=_MUTED, size=18),
+                ],
+                spacing=8,
+            ),
+            padding=ft.Padding(12, 8, 12, 8),
+            bgcolor=_CARD,
+            border_radius=10,
+            ink=True,
+            on_click=self._toggle_mobile_devices,
+        )
+
+        # devices list in a collapsible section: expanded by default until a
+        # device is picked, then collapsed to keep the send UI on screen
+        self.devices_list = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO)
+        self._devices_section = ft.ExpansionTile(
+            title=ft.Text("Nearby devices", size=13, weight=ft.FontWeight.BOLD, color=_MUTED),
+            expanded=True,
+            controls_padding=ft.Padding(8, 0, 8, 8),
+            controls=[ft.Container(content=self.devices_list)],
+        )
+        self._devices_card = ft.Container(
+            content=self._devices_section,
+            margin=ft.Margin(10, 0, 10, 0),
+        )
+
+        # ---- text tab
+        self.text_field = ft.TextField(
+            hint_text="Type or paste text to share...",
+            multiline=True,
+            min_lines=6,
+            max_lines=12,
+            expand=True,
+            bgcolor=_BG,
+            border_color="#2A3138",
+            color=_TEXT,
+        )
+        self.send_text_btn = ft.ElevatedButton(
+            content=ft.Text("Send"), icon=ft.Icons.SEND, bgcolor=_TEAL, color="#08110F",
+            on_click=self._on_send_text, height=48,
+        )
+        text_tab = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.OutlinedButton(content=ft.Text("Paste"), icon=ft.Icons.CONTENT_PASTE,
+                                              on_click=self._on_paste, height=44),
+                            ft.OutlinedButton(content=ft.Text("Clear"), icon=ft.Icons.CLEAR_ALL,
+                                              on_click=self._on_clear_text, height=44),
+                            ft.Container(expand=True),
+                            self.send_text_btn,
+                        ],
+                        spacing=8,
+                        wrap=True,
+                    ),
+                    self.text_field,
+                ],
+                spacing=10,
+                expand=True,
+            ),
+            padding=12,
+            expand=True,
+        )
+
+        # ---- files tab
+        self.selection_label = ft.Text("Nothing selected", color=_MUTED, size=12,
+                                       max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
+        self.file_progress = ft.ProgressBar(visible=False, color=_TEAL, bgcolor="#24303A")
+        self.file_progress_label = ft.Text("", color=_MUTED, size=11, visible=False,
+                                           max_lines=2, overflow=ft.TextOverflow.ELLIPSIS)
+        self.send_files_btn = ft.ElevatedButton(
+            content=ft.Text("Send"), icon=ft.Icons.SEND, bgcolor=_TEAL, color="#08110F",
+            on_click=self._on_send_files, height=48,
+        )
+        files_tab = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.ElevatedButton(content=ft.Text("Pick files"), icon=ft.Icons.FILE_OPEN,
+                                              on_click=self._on_pick_files, bgcolor=_CARD, color=_TEXT,
+                                              height=44),
+                            ft.ElevatedButton(content=ft.Text("Pick folder"), icon=ft.Icons.FOLDER_OPEN,
+                                              on_click=self._on_pick_folder, bgcolor=_CARD, color=_TEXT,
+                                              height=44),
+                        ],
+                        spacing=8,
+                        wrap=True,
+                    ),
+                    ft.Row(
+                        [
+                            self.selection_label,
+                            ft.TextButton(content=ft.Text("Clear"), on_click=self._on_clear_selection,
+                                          height=44),
+                        ],
+                        spacing=8,
+                        wrap=True,
+                    ),
+                    self.file_progress_label,
+                    self.file_progress,
+                    ft.Container(expand=True),
+                    ft.Row([ft.Container(expand=True), self.send_files_btn]),
+                ],
+                spacing=10,
+                expand=True,
+            ),
+            padding=12,
+            expand=True,
+        )
+
+        self.tabs = ft.Tabs(
+            length=2,
+            selected_index=0,
+            content=ft.Column(
+                expand=True,
+                controls=[
+                    ft.TabBar(
+                        tabs=[
+                            ft.Tab(label="Text", icon=ft.Icons.CHAT),
+                            ft.Tab(label="Files", icon=ft.Icons.FOLDER),
+                        ],
+                    ),
+                    ft.TabBarView(
+                        expand=True,
+                        controls=[text_tab, files_tab],
+                    ),
+                ],
+            ),
+            expand=True,
+        )
+
+        # activity log in a collapsed-by-default section so it never pushes
+        # the send controls off screen
+        self.log_list = ft.Column(spacing=4, scroll=ft.ScrollMode.AUTO)
+        log_section = ft.ExpansionTile(
+            title=ft.Text("Activity", size=13, weight=ft.FontWeight.BOLD, color=_MUTED),
+            expanded=False,
+            controls_padding=ft.Padding(8, 0, 8, 8),
+            controls=[ft.Container(height=180, content=self.log_list)],
+        )
+
+        root = ft.Column(
+            [
+                device_bar,
+                self._devices_card,
+                self.tabs,
+                log_section,
+            ],
+            spacing=0,
+            expand=True,
+            scroll=ft.ScrollMode.AUTO,  # whole page scrolls if the keyboard/space is tight
+        )
+        page.add(header, root)
+
+    # ------------------------------------------------------------------ mobile helpers
+
+    def _toggle_mobile_devices(self, e=None) -> None:
+        """Show/hide the device picker from the device bar (mobile layout)."""
+        card = getattr(self, "_devices_card", None)
+        if card is not None:
+            card.visible = not card.visible
+            self.page.update()
+
     # ------------------------------------------------------------------ devices panel
 
     def _schedule_refresh_devices(self, *_args) -> None:
@@ -284,9 +506,20 @@ class ShareGApp:
         if self.selected_device_id and self.selected_device_id not in seen:
             self.selected_device_id = None
         if not self.selected_device_id and self._device_tiles:
-            self._select_device(next(iter(self._device_tiles)))
+            self._select_device(next(iter(self._device_tiles)), user_pick=False)
 
         self._device_chip.value = f"This device: {self.backend.discovery.device_name}"
+        if getattr(self, "_is_mobile_layout", False):
+            sel = peers.get(self.selected_device_id)
+            if sel:
+                status = self.backend.statuses.get(sel["device_id"], "")
+                self._mobile_selected_label.value = (
+                    f"Send to: {sel['name']}" + (f" ({status})" if status else "")
+                )
+                self._mobile_selected_label.color = _TEXT
+            else:
+                self._mobile_selected_label.value = "No device selected"
+                self._mobile_selected_label.color = _MUTED
         self.page.update()
 
     def _make_device_tile(self, device_id: str) -> ft.Container:
@@ -323,10 +556,14 @@ class ShareGApp:
         col.controls[0].controls[1].value = peer["name"]
         col.controls[1].value = f"{peer['ip']} - {status or 'discovered'}"
 
-    def _select_device(self, device_id: str) -> None:
+    def _select_device(self, device_id: str, user_pick: bool = True) -> None:
         if self.selected_device_id == device_id:
             return
         self.selected_device_id = device_id
+        if user_pick and getattr(self, "_is_mobile_layout", False) and device_id:
+            # Collapse the picker after a pick so the send UI is on screen;
+            # tap the device bar to reopen it.
+            self._devices_card.visible = False
         self._schedule_refresh_devices()
 
     # ------------------------------------------------------------------ text tab
@@ -490,7 +727,12 @@ class ShareGApp:
                     ],
                     spacing=10,
                 ),
-                width=460,
+                # Wide enough to read on desktop, but breakpoint-capped so it
+                # never exceeds a phone screen (AlertDialog's inset padding
+                # alone would still let this content demand 460 dp).
+                width={ft.ResponsiveRowBreakpoint.XS: 300,
+                       ft.ResponsiveRowBreakpoint.SM: 420,
+                       ft.ResponsiveRowBreakpoint.MD: 460},
             ),
             actions=[
                 ft.TextButton(
