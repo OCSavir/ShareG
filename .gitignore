@@ -6,3 +6,4 @@ build/windows/
 build/linux/
 *.egg-info/
 close_test.log
+*.png.tmp\ndesk_check*.png\nmobile_shot*.png\nwindow_icon_render.png
