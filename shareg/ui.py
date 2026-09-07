@@ -342,12 +342,16 @@ class ShareGApp:
         )
 
         # ---- text tab
+        # NOTE: no expand=True on the TextField. On Android a flex TextField
+        # inside this tab chain renders as a gray, non-focusable rectangle and
+        # the soft keyboard never opens (Flet-on-Android constraint bug; the
+        # field must get concrete constraints). Fixed height + multiline gives
+        # the platform a well-defined editable area.
         self.text_field = ft.TextField(
             hint_text="Type or paste text to share...",
             multiline=True,
             min_lines=6,
             max_lines=12,
-            expand=True,
             bgcolor=_BG,
             border_color="#2A3138",
             color=_TEXT,
@@ -359,22 +363,26 @@ class ShareGApp:
         text_tab = ft.Container(
             content=ft.Column(
                 [
+                    # Buttons in a wrap Row with NO flex children (an
+                    # expand=True child inside a wrap Row is invalid flex
+                    # usage: Wrap/Flow has no flex protocol, and in a release
+                    # APK the mis-constrained subtree renders gray/dead).
                     ft.Row(
                         [
                             ft.OutlinedButton(content=ft.Text("Paste"), icon=ft.Icons.CONTENT_PASTE,
                                               on_click=self._on_paste, height=44),
                             ft.OutlinedButton(content=ft.Text("Clear"), icon=ft.Icons.CLEAR_ALL,
                                               on_click=self._on_clear_text, height=44),
-                            ft.Container(expand=True),
-                            self.send_text_btn,
                         ],
                         spacing=8,
                         wrap=True,
                     ),
                     self.text_field,
+                    # Send button below the field, full-width: always visible
+                    # and reachable on a touchscreen (no flex sibling needed).
+                    self.send_text_btn,
                 ],
                 spacing=10,
-                expand=True,
             ),
             padding=12,
             expand=True,
@@ -716,10 +724,11 @@ class ShareGApp:
         self._log(f"Text from {sender}: {len(text)} chars")
         # Selectable text (Ctrl+C works natively) + a Copy button for touch
         # devices where keyboard shortcuts are impractical.
-        # NOTE: no expand=True here - inside an AlertDialog the content column
-        # is height-unbounded, and a flex child would collapse to zero height
-        # (the text became invisible on Android while Copy still worked).
-        # Fixed min/max lines + light-on-dark colors make the text visible.
+        # NOTE: the TextField gets a CONCRETE width/height (no expand, no
+        # breakpoint dicts). On Android a multiline TextField without bounded
+        # constraints inside an AlertDialog renders as a gray, non-focusable
+        # area (keyboard never opens for the editable case) - the Android
+        # renderer needs real dimensions here.
         text_area = ft.TextField(
             value=text,
             multiline=True,
@@ -743,12 +752,9 @@ class ShareGApp:
                     ],
                     spacing=10,
                 ),
-                # Wide enough to read on desktop, but breakpoint-capped so it
-                # never exceeds a phone screen (AlertDialog's inset padding
-                # alone would still let this content demand 460 dp).
-                width={ft.ResponsiveRowBreakpoint.XS: 300,
-                       ft.ResponsiveRowBreakpoint.SM: 420,
-                       ft.ResponsiveRowBreakpoint.MD: 460},
+                # 320 dp is comfortably readable on a phone (fits a 360 dp
+                # screen with the dialog's inset padding) and fine on desktop.
+                width=320,
             ),
             actions=[
                 ft.TextButton(
